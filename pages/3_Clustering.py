@@ -7,7 +7,7 @@ from sklearn.decomposition import PCA
 from utils.dnb_api import fetch_dnb_documents
 from utils.preprocessing import build_vectorizer
 
-st.title("🧩 Topic Clustering (DNB Data)")
+st.title("Topic Clustering (DNB Data)")
 
 query = st.text_input("Cluster search term")
 
