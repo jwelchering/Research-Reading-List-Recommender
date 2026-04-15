@@ -39,7 +39,7 @@ def fetch_dnb_documents(query, max_records=25):
         date = extract(xml_str, "dc:date")
 
     if title == "unknown":
-    continue
+        continue
 
 text = f"{title} {creator} {date}".strip()
 
