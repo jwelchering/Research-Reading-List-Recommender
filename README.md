@@ -4,7 +4,6 @@ Copy the template, paste it to your GitHub README and edit! -->
 
 # Research-Reading-List-Recommender
 Building AI course project
-# Research Reading List Recommender
 
 ## Summary
 
