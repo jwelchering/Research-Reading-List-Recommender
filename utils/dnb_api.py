@@ -1,61 +1,83 @@
 import requests
-import xml.etree.ElementTree as ET
-import streamlit as st
-
-DNB_URL = "https://services.dnb.de/sru/dnb"
 
 
-@st.cache_data(ttl=3600)
-def fetch_dnb_documents(query, max_records=25):
+BASE_URL = "https://api.dnb.de/opac.htm"
+DEFAULT_PARAMS = {
+    "method": "search",
+    "format": "json",
+    "size": 20
+}
 
-    params = {
-        "version": "1.1",
-        "operation": "searchRetrieve",
-        "query": f'any "{query}"',
-        "maximumRecords": max_records
-    }
 
-    response = requests.get(DNB_URL, params=params, timeout=10)
+def fetch_dnb_documents(query: str, size: int = 20):
+    """
+    Fetch documents from DNB API and return a normalized list of dicts.
 
-    if response.status_code != 200:
+    Each document will ALWAYS contain:
+        - title
+        - abstract
+        - text  (combined field for NLP)
+
+    This guarantees compatibility with vectorizers / clustering pipelines.
+    """
+
+    params = DEFAULT_PARAMS.copy()
+    params["query"] = query
+    params["size"] = size
+
+    try:
+        response = requests.get(BASE_URL, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        print(f"[DNB API ERROR] {e}")
         return []
 
-    root = ET.fromstring(response.content)
+    # Defensive parsing (API structure may vary)
+    results = data.get("records", [])
 
-    ns = {"srw": "http://www.loc.gov/zing/srw/"}
+    documents = []
 
-    results = []
+    for item in results:
+        try:
+            # --- Extract fields safely ---
+            title = ""
+            abstract = ""
 
-    for record in root.findall(".//srw:record", ns):
+            # Title extraction (varies depending on API structure)
+            if "title" in item:
+                title = item.get("title", "")
+            elif "titles" in item and isinstance(item["titles"], list):
+                title = item["titles"][0]
 
-        data = record.find(".//srw:recordData", ns)
-        if data is None:
+            # Abstract extraction
+            if "abstract" in item:
+                abstract = item.get("abstract", "")
+            elif "descriptions" in item:
+                desc = item.get("descriptions", [])
+                if isinstance(desc, list) and len(desc) > 0:
+                    abstract = desc[0]
+
+            # Normalize to string
+            title = str(title).strip()
+            abstract = str(abstract).strip()
+
+            # --- Build TEXT FIELD (critical for NLP) ---
+            text = f"{title} {abstract}".strip()
+
+            # Skip empty entries
+            if not text:
+                continue
+
+            documents.append({
+                "title": title,
+                "abstract": abstract,
+                "text": text
+            })
+
+        except Exception as e:
+            # Skip malformed records but continue processing
+            print(f"[PARSE ERROR] {e}")
             continue
 
-        xml_str = ET.tostring(data, encoding="unicode", method="xml")
-
-        title = extract(xml_str, "dc:title")
-        creator = extract(xml_str, "dc:creator")
-        date = extract(xml_str, "dc:date")
-
-    if title == "unknown":
-        continue
-
-text = f"{title} {creator} {date}".strip()
-
-if len(text) < 5:
-    continue
-
-        results.append({
-            "title": title,
-            "text": text
-        })
-
-    return results
-
-
-def extract(xml, tag):
-    start = xml.find(tag)
-    if start == -1:
-        return "unknown"
-    return xml[start:start+120].replace("<", "").replace(">", "")
+    return documents
